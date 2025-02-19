@@ -22,7 +22,7 @@ csv_files = [f for f in os.listdir(CSV_FOLDER) if f.endswith(".csv")]
 
 # Function to generate audio using gTTS and re-encode with FFmpeg
 def generate_audio(text, filename):
-    tts = gTTS(text, lang='en')
+    tts = gTTS(text, lang='en', slow=True)
     temp_audio_path = os.path.join(AUDIO_DIR, "temp_" + filename)  # Temporary file
     final_audio_path = os.path.join(AUDIO_DIR, filename)
 
