@@ -20,10 +20,8 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 CSV_FOLDER = "csv_files"
 os.makedirs(CSV_FOLDER, exist_ok=True)
 
-# Get list of CSV files
 csv_files = [f for f in os.listdir(CSV_FOLDER) if f.endswith(".csv")]
 
-# Function to generate audio using ElevenLabs TTS
 def generate_audio(text, filename):
     url = "https://api.elevenlabs.io/v1/text-to-speech/qBDvhofpxp92JgXJxDjB"  #Lily Wolf voice
     headers = {
@@ -49,7 +47,6 @@ def generate_audio(text, filename):
         print(f"❌ ElevenLabs API Error: {response.json()}")
         return None
 
-# Function to check if a deck exists in Anki
 def check_and_create_deck(deck_name):
     response = requests.post(ANKI_CONNECT_URL, json={"action": "deckNames", "version": 6}).json()
     if "result" in response and deck_name not in response["result"]:
@@ -60,7 +57,6 @@ def check_and_create_deck(deck_name):
             "params": {"deck": deck_name}
         })
 
-# Function to check if a card exists in Anki
 def find_existing_note_id(deck_name, front):
     payload = {
         "action": "findNotes",
@@ -70,7 +66,6 @@ def find_existing_note_id(deck_name, front):
     response = requests.post(ANKI_CONNECT_URL, json=payload).json()
     return response.get("result", [])
 
-# Function to update an existing note
 def update_note_in_anki(note_id, front, back, audio_path):
     with open(audio_path, "rb") as f:
         audio_data = base64.b64encode(f.read()).decode("utf-8")  # Convert to Base64
@@ -107,39 +102,19 @@ def update_note_in_anki(note_id, front, back, audio_path):
     else:
         print(f"✅ Updated note {note_id} with new answer and audio!")
 
-# Function to add a new note to Anki (Prevents Duplicates)
-def add_note_to_anki(deck_name, front, back):
-    existing_notes = find_existing_note_id(deck_name, front)
+def was_note_modified(note, back):
+    # Fetch the existing answer (Back field) from Anki
+    existing_back = requests.post("http://localhost:8765", json={
+        "action": "notesInfo",
+        "version": 6,
+        "params": {"notes": [note]}
+    }).json()["result"][0]["fields"]["Back"]["value"]
+    existing_back_cleaned = re.sub(r"\[sound:.*?\]", "", existing_back).strip()
 
-    if existing_notes:
-        print(f"⚠️ Note already exists for: {front}, checking for updates...")
+    # Check if the answer has changed
+    return existing_back_cleaned.strip() != back.strip()
 
-        # Fetch the existing answer (Back field) from Anki
-        existing_back = requests.post("http://localhost:8765", json={
-            "action": "notesInfo",
-            "version": 6,
-            "params": {"notes": [existing_notes[0]]}
-        }).json()["result"][0]["fields"]["Back"]["value"]
-        existing_back_cleaned = re.sub(r"\[sound:.*?\]", "", existing_back).strip()
-
-        print(existing_back_cleaned)
-        print(back)
-        # Check if the answer has changed
-        if existing_back_cleaned.strip() == back.strip():
-            print(f"✅ No changes detected for: {front}, skipping update.")
-            return  # Skip updating if nothing has changed
-        
-    audio_filename = f"{deck_name}_audio_{index}.mp3"
-    audio_path = generate_audio(back, audio_filename)
-    
-    if not audio_path:
-        return
-    
-    if existing_notes:
-        print(f"🔄 Changes detected, updating note: {front}")
-        update_note_in_anki(existing_notes[0], front, back, audio_path)
-        return
-
+def add_note_to_anki(deck_name, front, back, audio_path):
     with open(audio_path, "rb") as f:
         audio_data = base64.b64encode(f.read()).decode("utf-8")  # Convert to Base64
     
@@ -178,7 +153,6 @@ def add_note_to_anki(deck_name, front, back):
     else:
         print(f"✅ Added new note with audio!")
 
-# Process each CSV file
 for csv_file in csv_files:
     deck_name = os.path.splitext(csv_file)[0].replace(" ", "_")  # Use filename as deck name, replacing spaces
     check_and_create_deck(deck_name)  # Ensure deck exists
@@ -195,17 +169,25 @@ for csv_file in csv_files:
     # Process each flashcard
     for index, (front, back) in enumerate(flashcards):
         print(f"🎴 Processing card {index + 1}/{len(flashcards)}: {front}")
-        # audio_filename = f"{deck_name}_audio_{index}.mp3"
-        # audio_path = generate_audio(back, audio_filename)
+        existing_notes = find_existing_note_id(deck_name, front)
+
+        if existing_notes:
+            print(f"⚠️ Note already exists for: {front}, checking for updates...")
+
+            if not was_note_modified(existing_notes[0], back):
+                print(f"✅ No changes detected for: {front}, skipping update.")
+                continue  # Skip updating if nothing has changed
+            
+        audio_filename = f"{deck_name}_audio_{index}.mp3"
+        audio_path = generate_audio(back, audio_filename)
+        if not audio_path:
+            continue
         
-        # if audio_path:
-            # existing_notes = find_existing_note_id(deck_name, front)
-            # print(existing_notes)
-            # if existing_notes:
-            #     update_note_in_anki(existing_notes[0], front, back, audio_path)
-            # else:
-        add_note_to_anki(deck_name, front, back)
-        
+        if existing_notes:
+            print(f"🔄 Changes detected, updating note: {front}")
+            update_note_in_anki(existing_notes[0], front, back, audio_path)
+        else:
+            add_note_to_anki(deck_name, front, back, audio_path)
         time.sleep(1)  # Prevent API rate limits
 
 print("✅ All flashcards processed and added/updated in Anki!")
