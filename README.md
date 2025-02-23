@@ -10,7 +10,3 @@ This script automates the process of **adding flashcards to Anki** with high-qua
 ✅ **Checks if a note already exists** before adding.  
 ✅ **Only regenerates audio if the text changes**, saving API calls.  
 ✅ Works with **multiple CSV files**, automatically creating Anki decks.  
-
----
-
-## 📂 Folder Structure
